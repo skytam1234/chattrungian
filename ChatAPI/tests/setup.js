@@ -1,0 +1,2 @@
+// Cleanup placeholder
+export default {};

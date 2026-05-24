@@ -1,0 +1,241 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String             @id @default(uuid())
+  email               String             @unique
+  passwordHash        String             @map("password_hash")
+  displayName         String             @map("display_name")
+  avatarUrl           String?            @map("avatar_url")
+  isActive            Boolean            @default(true) @map("is_active")
+  isVerified          Boolean            @default(false) @map("is_verified")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  callOccupiedUntil   DateTime?          @map("call_occupied_until")
+  lastSeenAt          DateTime           @default(now()) @map("last_seen_at")
+  phoneNumber         String?            @unique @map("phone_number")
+  resetToken          String?            @map("reset_token")
+  resetTokenExpiresAt DateTime?          @map("reset_token_expires_at")
+  status              String             @default("offline") @map("status")
+  username            String             @unique
+  verificationToken   String?            @map("verification_token")
+  receivedCalls       Call[]             @relation("CallCallee")
+  initiatedCalls      Call[]             @relation("CallCaller")
+  conversationUsers   ConversationUser[]
+  groupMembers        GroupMember[]
+  messageStatuses     MessageStatus[]
+  sentMessages        Message[]          @relation("SentMessages")
+  pinnedDocuments     PinnedDocument[]   @relation("PinnedBy")
+  sessions            Session[]
+  unreadMessages      UnreadMessage[]
+
+  @@index([email])
+  @@index([username])
+  @@index([status])
+  @@index([phoneNumber])
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  token            String    @unique @db.VarChar(500)
+  refreshToken     String?   @map("refresh_token") @db.VarChar(500)
+  deviceInfo       Json      @map("device_info")
+  ipAddress        String?   @map("ip_address")
+  userAgent        String?   @map("user_agent")
+  expiresAt        DateTime  @map("expires_at")
+  refreshExpiresAt DateTime? @map("refresh_expires_at")
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Conversation {
+  id              String             @id @default(uuid())
+  type            String
+  name            String?
+  avatarUrl       String?            @map("avatar_url")
+  description     String?
+  createdBy       String             @map("created_by")
+  lastMessageAt   DateTime?          @map("last_message_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  isArchived      Boolean            @default(false) @map("is_archived")
+  lastMessageId   String?            @map("last_message_id")
+  calls           Call[]
+  users           ConversationUser[]
+  groupMembers    GroupMember[]
+  messages        Message[]
+  pinnedDocuments PinnedDocument[]
+  unreadMessages  UnreadMessage[]
+
+  @@index([type])
+  @@index([createdBy])
+  @@index([lastMessageAt])
+  @@index([isArchived])
+  @@map("conversations")
+}
+
+model ConversationUser {
+  id                 String       @id @default(uuid())
+  conversationId     String       @map("conversation_id")
+  userId             String       @map("user_id")
+  nickname           String?
+  role               String       @default("member")
+  joinedAt           DateTime     @default(now()) @map("joined_at")
+  leftAt             DateTime?    @map("left_at")
+  isMuted            Boolean      @default(false) @map("is_muted")
+  isPinned           Boolean      @default(false) @map("is_pinned")
+  notifications      String       @default("all")
+  customNotification Boolean      @default(false) @map("custom_notification")
+  conversation       Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@index([userId, isPinned])
+  @@map("conversation_users")
+}
+
+model Message {
+  id              String           @id @default(uuid())
+  conversationId  String           @map("conversation_id")
+  senderId        String           @map("sender_id")
+  content         String?          @db.Text
+  replyToId       String?          @map("reply_to_id")
+  isEdited        Boolean          @default(false) @map("is_edited")
+  metadata        Json
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  deletedBy       Json             @map("deleted_by")
+  forwardedFromId String?          @map("forwarded_from_id")
+  isRecalled      Boolean          @default(false) @map("is_recalled")
+  messageType     String           @default("text") @map("message_type")
+  statuses        MessageStatus[]
+  conversation    Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  replyTo         Message?         @relation("ReplyMessages", fields: [replyToId], references: [id])
+  replies         Message[]        @relation("ReplyMessages")
+  sender          User             @relation("SentMessages", fields: [senderId], references: [id])
+  pinnedDocs      PinnedDocument[]
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@index([replyToId])
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model MessageStatus {
+  id          String    @id @default(uuid())
+  messageId   String    @map("message_id")
+  userId      String    @map("user_id")
+  status      String    @default("sent")
+  seenAt      DateTime? @map("seen_at")
+  deliveredAt DateTime? @map("delivered_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  message     Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+  @@index([seenAt])
+  @@map("message_status")
+}
+
+model UnreadMessage {
+  id                 String       @id @default(uuid())
+  userId             String       @map("user_id")
+  conversationId     String       @map("conversation_id")
+  lastReadMessageId  String?      @map("last_read_message_id")
+  unreadCount        Int          @default(0) @map("unread_count")
+  lastUnreadAt       DateTime?    @map("last_unread_at")
+  hasUnreplied       Boolean      @default(false) @map("has_unreplied")
+  lastUnrepliedMsgId String?      @map("last_unreplied_msg_id")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  conversation       Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, conversationId])
+  @@index([userId, conversationId])
+  @@index([userId, hasUnreplied])
+  @@index([conversationId], map: "unread_messages_conversation_id_fkey")
+  @@map("unread_messages")
+}
+
+model PinnedDocument {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  messageId      String       @map("message_id")
+  pinnedBy       String       @map("pinned_by")
+  title          String?
+  description    String?
+  pinnedAt       DateTime     @default(now()) @map("pinned_at")
+  pinOrder       Int          @default(0) @map("pin_order")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message        Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pinnedByUser   User         @relation("PinnedBy", fields: [pinnedBy], references: [id])
+
+  @@unique([conversationId, messageId])
+  @@index([conversationId])
+  @@index([pinnedBy])
+  @@index([conversationId, pinOrder])
+  @@index([messageId], map: "pinned_documents_message_id_fkey")
+  @@map("pinned_documents")
+}
+
+model GroupMember {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  userId         String       @map("user_id")
+  role           String       @default("member")
+  nickname       String?
+  isActive       Boolean      @default(true) @map("is_active")
+  joinedAt       DateTime     @default(now()) @map("joined_at")
+  invitedBy      String?      @map("invited_by")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@map("group_members")
+}
+
+model Call {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  callerId       String       @map("caller_id")
+  calleeId       String       @map("callee_id")
+  type           String
+  status         String       @default("pending")
+  startedAt      DateTime?    @map("started_at")
+  endedAt        DateTime?    @map("ended_at")
+  duration       Int?         @default(0)
+  expiresAt      DateTime?    @map("expires_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  callee         User         @relation("CallCallee", fields: [calleeId], references: [id])
+  caller         User         @relation("CallCaller", fields: [callerId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([callerId])
+  @@index([calleeId])
+  @@index([status])
+  @@map("calls")
+}
