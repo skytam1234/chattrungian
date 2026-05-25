@@ -4,6 +4,7 @@ import config from '../config/index.js';
 import prisma from '../config/prisma.js';
 import { generateTokens, getTokenExpiration, verifyToken } from '../utils/jwt.js';
 import { NotFoundError, AuthenticationError, ConflictError, ValidationError } from '../middleware/error.middleware.js';
+import { sendPasswordResetEmail } from './email.service.js';
 
 export class AuthService {
   /**
@@ -252,8 +253,8 @@ export class AuthService {
       },
     });
 
-    // In production, send email here
-    console.log(`Reset token for ${email}: ${resetToken}`);
+    // Send password reset email
+    await sendPasswordResetEmail(email, resetToken, user.displayName || user.username);
 
     return { message: 'If email exists, reset link has been sent' };
   }
